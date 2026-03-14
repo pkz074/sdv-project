@@ -1,0 +1,20 @@
+{
+  "policyId": "org.vehicle:my-policy",
+  "features": {
+    "VehicleSpeed": {
+      "properties": {
+        "value": 0.0
+      }
+    },
+    "BatterySOC": {
+      "properties": {
+        "value": 100.0
+      }
+    },
+    "SpeedDriftFault": {
+      "properties": {
+        "value": false
+      }
+    }
+  }
+}
