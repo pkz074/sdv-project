@@ -75,7 +75,7 @@ def main():
                 if speed is not None:
                     drift_fault = speed > 61.0
                     status = put_feature_value("VehicleSpeed", round(speed, 2))
-                    fault_status = put_feature_value("SpeedDriftFault", drift_fault)
+                    put_feature_value("SpeedDriftFault", drift_fault)
                     print(
                         f"Zenoh+Ditto -> Speed: {speed:.2f} km/h | DriftFault: {drift_fault} | Ditto: {status}"
                     )
@@ -88,8 +88,8 @@ def main():
             except Exception as e:
                 print(f"Error {e} trying again in 5 sec")
                 time.sleep(5)
-
-    session.close()
+            finally:
+                session.close()
 
 
 if __name__ == "__main__":
