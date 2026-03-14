@@ -1,3 +1,4 @@
 kuksa-client
 eclipse-zenoh
 python-dotenv
+requests
