@@ -12,11 +12,19 @@ feeder.py  →  Eclipse Kuksa  →  zenoh-bridge.py  →  Eclipse Zenoh  →  Ec
 ```
 
 **Components:**
-- `vehicle/feeder.py` — Simulates vehicle signals (speed, battery SoC) with sensor drift and fault injection
+- `vehicle/feeder.py` — Simulates vehicle signals with sensor drift and fault injection
 - `Eclipse Kuksa` — VSS databroker, normalizes signals over gRPC
 - `cloud/zenoh-bridge.py` — Reads from Kuksa, publishes to Zenoh, and pushes state to Ditto
+- `cloud/zenoh-subscriber.py` — Subscribes to Zenoh topics for pipeline verification
 - `Eclipse Zenoh` — High-performance pub/sub transport with memory storage
 - `Eclipse Ditto` — Digital twin backend, exposes vehicle state via REST API
+
+**Signals monitored:**
+- `Vehicle.Speed` — vehicle speed (km/h)
+- `Vehicle.Powertrain.TractionBattery.StateOfCharge.Current` — battery SOC (%)
+- `Vehicle.Powertrain.CombustionEngine.Speed` — engine speed (RPM)
+- `Vehicle.Chassis.Accelerator.PedalPosition` — throttle position (%)
+- `Vehicle.Powertrain.CombustionEngine.ECT` — coolant temperature (°C)
 
 **Functional Modification:**
 A `SpeedDriftFault` flag is computed in the bridge — it activates when speed drifts beyond a threshold. This flag propagates through the full pipeline and is visible in the Ditto digital twin in real time.
@@ -103,11 +111,17 @@ python ditto_setup.py
 
 Expected output:
 ```
-Policy response: 201 ...
-Thing response: 201 ...
+Deleting old thing and policy...
+Thing delete: 204
+Policy delete: 204
+Registering policy...
+Policy response: 201
+Registering thing...
+Thing response: 201
+Ditto setup complete.
 ```
 
-This creates the `org.vehicle:my-device` digital twin with features: `VehicleSpeed`, `BatterySOC`, and `SpeedDriftFault`.
+This creates the `org.vehicle:my-device` digital twin with 6 features: `VehicleSpeed`, `BatterySOC`, `EngineSpeed`, `ThrottlePosition`, `CoolantTemperature`, and `SpeedDriftFault`.
 
 ---
 
@@ -131,9 +145,10 @@ cd cloud
 python zenoh-bridge.py
 ```
 
-**Terminal 3 — Verify Zenoh storage (optional):**
+**Terminal 3 — Zenoh subscriber (optional, for pipeline verification):**
 ```bash
-curl http://localhost:8000/vehicle/speed
+cd cloud
+python zenoh-subscriber.py
 ```
 
 ---
@@ -141,31 +156,45 @@ curl http://localhost:8000/vehicle/speed
 ## Verifying the Pipeline
 
 ### 1. Check feeder output (Terminal 1)
-You should see speed and battery values updating every second:
+You should see all 5 signals updating every second:
 ```
-Sent -> Speed: 60.43 km/h | Battery: 94.9%
+Speed: 60.4 km/h | SOC: 94.9% | RPM: 2034 | Throttle: 25.3% | Temp: 71.2°C
 ```
 
 ### 2. Check bridge output (Terminal 2)
-You should see Zenoh publish confirmations and Ditto HTTP 204 responses:
+You should see each signal being pushed to Ditto with HTTP 204 responses:
 ```
-Zenoh+Ditto -> Speed: 60.43 km/h | DriftFault: False | Ditto: 204
-Zenoh+Ditto -> Battery: 94.90% | Ditto: 204
+[VehicleSpeed] 60.44 -> Ditto: 204
+[BatterySOC] 94.90 -> Ditto: 204
+[EngineSpeed] 2034.00 -> Ditto: 204
+[ThrottlePosition] 25.00 -> Ditto: 204
+[CoolantTemperature] 71.20 -> Ditto: 204
+[SpeedDriftFault] False
 ```
 
-### 3. Check Ditto digital twin via REST
+### 3. Check Zenoh subscriber output (Terminal 3)
+You should see all Zenoh topics receiving messages:
+```
+[vehicle/speed] signal: Vehicle.Speed | value: 60.44 | timestamp: ...
+[vehicle/powertrain/combustionengine/speed] signal: Vehicle.Powertrain.CombustionEngine.Speed | value: 2034 | timestamp: ...
+```
+
+### 4. Check Ditto digital twin via REST
 ```bash
 curl -u ditto:ditto http://localhost:8080/api/2/things/org.vehicle:my-device
 ```
 
-### 4. Check Ditto Explorer UI
-Open `http://localhost:8080` in your browser, click the Explorer UI link, and select `org.vehicle:my-device`. You will see `VehicleSpeed`, `BatterySOC`, and `SpeedDriftFault` updating in real time.
+### 5. Check Ditto Explorer UI
+Open `http://localhost:8080` in your browser, click the Explorer UI link, and select `org.vehicle:my-device`. You will see all 6 features updating in real time.
 
-### 5. Check Zenoh REST API
+### 6. Check Zenoh REST API
 While the bridge is running:
 ```bash
 curl http://localhost:8000/vehicle/speed
 curl http://localhost:8000/vehicle/powertrain/tractionbattery/stateofcharge/current
+curl http://localhost:8000/vehicle/powertrain/combustionengine/speed
+curl http://localhost:8000/vehicle/chassis/accelerator/pedalposition
+curl http://localhost:8000/vehicle/powertrain/combustionengine/ect
 ```
 
 ---
@@ -175,17 +204,18 @@ curl http://localhost:8000/vehicle/powertrain/tractionbattery/stateofcharge/curr
 ```
 sdv-project/
 ├── vehicle/
-│   ├── feeder.py           # VSS signal simulator with fault injection
+│   ├── feeder.py               # VSS signal simulator with fault injection
 │   └── requirements.txt
 ├── cloud/
-│   ├── zenoh-bridge.py     # Kuksa → Zenoh → Ditto bridge
-│   ├── ditto_setup.py      # Registers Ditto policy and digital twin
+│   ├── zenoh-bridge.py         # Kuksa → Zenoh → Ditto bridge
+│   ├── zenoh-subscriber.py     # Zenoh subscriber for pipeline verification
+│   ├── ditto_setup.py          # Registers Ditto policy and digital twin
 │   └── requirements.txt
-├── policy.json             # Ditto access policy definition
-├── VSS_Ditto.json          # Digital twin feature structure
-├── zenoh-config.json5      # Zenoh router config with memory storage
-├── docker-compose.yaml     # Kuksa + Zenoh services
-├── .env.example            # Environment variable template
+├── policy.json                 # Ditto access policy definition
+├── VSS_Ditto.json              # Digital twin feature structure
+├── zenoh-config.json5          # Zenoh router config with memory storage
+├── docker-compose.yaml         # Kuksa + Zenoh services
+├── .env.example                # Environment variable template
 └── README.md
 ```
 
