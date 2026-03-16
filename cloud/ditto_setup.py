@@ -27,15 +27,35 @@ def put_thing(thing_id, thing_data):
     return response
 
 
+def delete_policy(policy_id):
+    url = f"{DITTO_URL}/policies/{policy_id}"
+    response = requests.delete(url, auth=AUTH)
+    return response.status_code
+
+
+def delete_thing(thing_id):
+    url = f"{DITTO_URL}/things/{thing_id}"
+    response = requests.delete(url, auth=AUTH)
+    return response.status_code
+
+
 if __name__ == "__main__":
+    # clean old policies/things
+    print("Deleting old thing and policy...")
+    print(f"Thing delete: {delete_thing(THING_ID)}")
+    print(f"Policy delete: {delete_policy(POLICY_ID)}")
+
+    # create a new policy
+    print("\nRegistering policy...")
     with open("../policy.json", "r") as f:
         policy_data = json.load(f)
-
     response = put_policy(POLICY_ID, policy_data)
-    print(f"Policy response: {response.status_code} - {response.text}")
+    print(f"Policy response: {response.status_code}")
 
+    # and a new thing
+    print("\nRegistering thing...")
     with open("../VSS_Ditto.json", "r") as f:
         thing_data = json.load(f)
-
     response = put_thing(THING_ID, thing_data)
-    print(f"Thing response: {response.status_code} - {response.text}")
+    print(f"Thing response: {response.status_code}")
+    print("\nDitto setup complete.")

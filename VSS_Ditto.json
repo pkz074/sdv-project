@@ -11,6 +11,21 @@
         "value": 100.0
       }
     },
+    "EngineSpeed": {
+      "properties": {
+        "value": 0.0
+      }
+    },
+    "ThrottlePosition": {
+      "properties": {
+        "value": 0.0
+      }
+    },
+    "CoolantTemperature": {
+      "properties": {
+        "value": 0.0
+      }
+    },
     "SpeedDriftFault": {
       "properties": {
         "value": false
