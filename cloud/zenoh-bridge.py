@@ -16,10 +16,21 @@ ZENOH_PORT = int(os.getenv("ZENOH_PORT", 7447))
 DITTO_URL = os.getenv("DITTO_API_URL", "http://localhost:8080/api/2")
 AUTH = (os.getenv("DITTO_USERNAME", "ditto"), os.getenv("DITTO_PASSWORD", "ditto"))
 THING_ID = "org.vehicle:my-device"
+
 SIGNALS = [
     "Vehicle.Speed",
     "Vehicle.Powertrain.TractionBattery.StateOfCharge.Current",
+    "Vehicle.Powertrain.CombustionEngine.Speed",
+    "Vehicle.Chassis.Accelerator.PedalPosition",
+    "Vehicle.Powertrain.CombustionEngine.ECT",
 ]
+SIGNAL_TO_FEATURE = {
+    "Vehicle.Speed": "VehicleSpeed",
+    "Vehicle.Powertrain.TractionBattery.StateOfCharge.Current": "BatterySOC",
+    "Vehicle.Powertrain.CombustionEngine.Speed": "EngineSpeed",
+    "Vehicle.Chassis.Accelerator.PedalPosition": "ThrottlePosition",
+    "Vehicle.Powertrain.CombustionEngine.ECT": "CoolantTemperature",
+}
 
 
 def put_feature_value(feature, value):
@@ -43,12 +54,10 @@ def main():
 
     with VSSClient(KUKSA_HOST, KUKSA_PORT) as client:
         print("Sending to Zenoh")
-
-        while True:
-            try:
+        try:
+            while True:
                 values = client.get_current_values(SIGNALS)
-                speed = None
-                soc = None
+
                 for signal, datapoint in values.items():
                     if datapoint is None:
                         continue
@@ -64,32 +73,25 @@ def main():
                     )
 
                     session.put(topic, payload)
-                    if signal == "Vehicle.Speed":
-                        speed = datapoint.value
-                    elif (
-                        signal
-                        == "Vehicle.Powertrain.TractionBattery.StateOfCharge.Current"
-                    ):
-                        soc = datapoint.value
+                    feature = SIGNAL_TO_FEATURE.get(signal)
+                    if feature and datapoint.value is not None:
+                        status = put_feature_value(feature, round(datapoint.value, 2))
+                        print(f"[{feature}] {datapoint.value:.2f} -> Ditto: {status}")
 
-                if speed is not None:
-                    drift_fault = speed > 61.0
-                    status = put_feature_value("VehicleSpeed", round(speed, 2))
+                speed_dp = values.get("Vehicle.Speed")
+                if speed_dp and speed_dp.value is not None:
+                    drift_fault = speed_dp.value > 61
                     put_feature_value("SpeedDriftFault", drift_fault)
-                    print(
-                        f"Zenoh+Ditto -> Speed: {speed:.2f} km/h | DriftFault: {drift_fault} | Ditto: {status}"
-                    )
-
-                if soc is not None:
-                    status = put_feature_value("BatterySOC", round(soc, 2))
-                    print(f"Zenoh+Ditto -> Battery: {soc:.2f}% | Ditto: {status}")
+                    print(f"[SpeedDriftFault] {drift_fault}")
 
                 time.sleep(1)
-            except Exception as e:
-                print(f"Error {e} trying again in 5 sec")
-                time.sleep(5)
-            finally:
-                session.close()
+        except KeyboardInterrupt:
+            print("shutting down")
+        except Exception as e:
+            print(f"Error: {e} retrying in 5 sec")
+            time.sleep(5)
+        finally:
+            session.close()
 
 
 if __name__ == "__main__":
