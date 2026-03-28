@@ -28,11 +28,11 @@ def run_feeder():
                 drift = random.uniform(-0.1, 0.4)
                 speed += drift
 
-                if random.random() < NOISE_PROBABILTY:
+                if random.random() < NOISE_PROBABILITY:
                     speed += random.uniform(5, 15)
                     print("Speed noise spike injected")
 
-                soc -= 0.05
+                soc -= random.uniform(0.05, 0.15)
                 if soc < 0:
                     soc = 100.0
 
@@ -42,24 +42,27 @@ def run_feeder():
                 throttle += random.uniform(-1, 1)
                 throttle = max(0, min(100, throttle))
 
-                temperature += random.uniform(-0.1, 0.3)
-                temperature = max(60, min(120, temperature))
+                temperature += random.uniform(-0.1, 0.5)
+                temperature = max(60, min(130, temperature))  # can exceed 100 now
 
-                client.set_current_values(
-                    {
-                        "Vehicle.Speed": Datapoint(speed),
-                        "Vehicle.Powertrain.TractionBattery.StateOfCharge.Current": Datapoint(
-                            soc
-                        ),
-                        "Vehicle.Powertrain.CombustionEngine.Speed": Datapoint(rpm),
-                        "Vehicle.Chassis.Accelerator.PedalPosition": Datapoint(
-                            throttle
-                        ),
-                        "Vehicle.Powertrain.CombustionEngine.ECT": Datapoint(
-                            temperature
-                        ),
-                    }
-                )
+                # cleaner then before
+                signals = {
+                    "Vehicle.Speed": Datapoint(speed),
+                    "Vehicle.Powertrain.TractionBattery.StateOfCharge.Current": Datapoint(
+                        soc
+                    ),
+                    "Vehicle.Powertrain.CombustionEngine.Speed": Datapoint(rpm),
+                    "Vehicle.Chassis.Accelerator.PedalPosition": Datapoint(throttle),
+                }
+
+                if random.random() > DROPOUT_PROBABILITY:
+                    signals["Vehicle.Powertrain.CombustionEngine.ECT"] = Datapoint(
+                        temperature
+                    )
+                else:
+                    print("Temperature signal dropout, skipping this cycle")
+
+                client.set_current_values(signals)
 
                 print(
                     f"Speed: {speed:.1f} km/h | SOC: {soc:.1f}% | RPM: {rpm:.0f} | Throttle: {throttle:.1f}% | Temp: {temperature:.1f}°C"
