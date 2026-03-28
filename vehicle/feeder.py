@@ -26,7 +26,7 @@ def run_feeder():
         while True:
             try:
                 drift = random.uniform(-0.1, 0.4)
-                speed += drift
+                speed += 500
 
                 if random.random() < NOISE_PROBABILITY:
                     speed += random.uniform(5, 15)
