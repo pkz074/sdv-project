@@ -30,6 +30,21 @@
       "properties": {
         "value": false
       }
+    },
+    "LowBatteryAlert": {
+      "properties": {
+        "value": false
+      }
+    },
+    "OverheatAlert": {
+      "properties": {
+        "value": false
+      }
+    },
+    "VehicleHealthState": {
+      "properties": {
+        "value": "NORMAL"
+      }
     }
   }
 }
