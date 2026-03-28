@@ -8,16 +8,14 @@ AUTH = ('ditto', 'ditto')
 def run_diagnostic():
     print("--- OpenSOVD Diagnostic Scan Starting ---")
     try:
-        # 1. Reach out to the Digital Twin in the Cloud
+        # Reach out to the Digital Twin in the Cloud
         response = requests.get(DITTO_URL, auth=AUTH)
         
         if response.status_code == 200:
             data = response.json()
-            # 2. Navigate the JSON structure to find features
             features = data.get('features', {})
             
-            # 3. Check specific Fault Flags
-            # We look for the SpeedDriftFault added in Iteration 2
+            # Looking for for the SpeedDriftFault added in Iteration 2
             drift_fault = features.get('SpeedDriftFault', {}).get('properties', {}).get('value', False)
             
             print(f"Checking SpeedDriftFault... Status: {'[ ERROR ]' if drift_fault else '[ OK ]'}")
