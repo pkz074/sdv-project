@@ -10,6 +10,10 @@ load_dotenv()
 KUKSA_HOST = os.getenv("KUKSA_ADDRESS", "localhost")
 KUKSA_PORT = int(os.getenv("KUKSA_PORT", 55556))
 
+# Fault injection config
+DROPOUT_PROBABILITY = 0.1
+NOISE_PROBABILITY = 0.15
+
 
 def run_feeder():
     print(f"Connecting to Kuksa at {KUKSA_HOST}:{KUKSA_PORT}")
@@ -23,6 +27,10 @@ def run_feeder():
             try:
                 drift = random.uniform(-0.1, 0.4)
                 speed += drift
+
+                if random.random() < NOISE_PROBABILTY:
+                    speed += random.uniform(5, 15)
+                    print("Speed noise spike injected")
 
                 soc -= 0.05
                 if soc < 0:
