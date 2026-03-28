@@ -15,7 +15,12 @@ ZENOH_ROUTER = os.getenv("ZENOH_ROUTER_ADDRESS", "localhost")
 ZENOH_PORT = int(os.getenv("ZENOH_PORT", 7447))
 DITTO_URL = os.getenv("DITTO_API_URL", "http://localhost:8080/api/2")
 AUTH = (os.getenv("DITTO_USERNAME", "ditto"), os.getenv("DITTO_PASSWORD", "ditto"))
+
 THING_ID = "org.vehicle:my-device"
+
+SOC_LOW_THRESHOLD = 20.0  # % below this triggers LowBatteryAlert
+TEMP_HIGH_THRESHOLD = 100.0  # °C above this triggers OverheatAlert
+SPEED_DRIFT_THRESHOLD = 61.0  # km/h above this triggers SpeedDriftFault
 
 SIGNALS = [
     "Vehicle.Speed",
@@ -24,6 +29,7 @@ SIGNALS = [
     "Vehicle.Chassis.Accelerator.PedalPosition",
     "Vehicle.Powertrain.CombustionEngine.ECT",
 ]
+
 SIGNAL_TO_FEATURE = {
     "Vehicle.Speed": "VehicleSpeed",
     "Vehicle.Powertrain.TractionBattery.StateOfCharge.Current": "BatterySOC",
@@ -41,29 +47,38 @@ def put_feature_value(feature, value):
     return response.status_code
 
 
+def compute_health_state(speed_fault, low_battery, overheat):
+    if (overheat and speed_fault) or (overheat and low_battery):
+        return "UNSAFE"
+    elif speed_fault or low_battery or overheat:
+        return "DEGRADED"
+    else:
+        return "NORMAL"
+
+
 def main():
     config = zenoh.Config()
     config.insert_json5(
         "connect/endpoints", json.dumps([f"tcp/{ZENOH_ROUTER}:{ZENOH_PORT}"])
     )
-
     session = zenoh.open(config)
-
     print(f"Connected to router at {ZENOH_ROUTER}:{ZENOH_PORT}")
     print(f"Connecting to kuksa at {KUKSA_HOST}:{KUKSA_PORT}")
 
     with VSSClient(KUKSA_HOST, KUKSA_PORT) as client:
-        print("Sending to Zenoh")
+        print("Pipeline running: Kuksa -> Zenoh -> Ditto")
         try:
             while True:
                 values = client.get_current_values(SIGNALS)
+                speed = None
+                soc = None
+                temperature = None
 
                 for signal, datapoint in values.items():
-                    if datapoint is None:
+                    if datapoint is None or datapoint.value is None:
                         continue
 
                     topic = signal.replace(".", "/").lower()
-
                     payload = json.dumps(
                         {
                             "signal": signal,
@@ -71,24 +86,49 @@ def main():
                             "timestamp": str(datapoint.timestamp),
                         }
                     )
-
                     session.put(topic, payload)
+
                     feature = SIGNAL_TO_FEATURE.get(signal)
-                    if feature and datapoint.value is not None:
+                    if feature:
                         status = put_feature_value(feature, round(datapoint.value, 2))
                         print(f"[{feature}] {datapoint.value:.2f} -> Ditto: {status}")
 
-                speed_dp = values.get("Vehicle.Speed")
-                if speed_dp and speed_dp.value is not None:
-                    drift_fault = speed_dp.value > 61
-                    put_feature_value("SpeedDriftFault", drift_fault)
-                    print(f"[SpeedDriftFault] {drift_fault}")
+                    if signal == "Vehicle.Speed":
+                        speed = datapoint.value
+                    elif (
+                        signal
+                        == "Vehicle.Powertrain.TractionBattery.StateOfCharge.Current"
+                    ):
+                        soc = datapoint.value
+                    elif signal == "Vehicle.Powertrain.CombustionEngine.ECT":
+                        temperature = datapoint.value
+
+                # Compute fault flags
+                speed_fault = speed is not None and speed > SPEED_DRIFT_THRESHOLD
+                low_battery = soc is not None and soc < SOC_LOW_THRESHOLD
+                overheat = temperature is not None and temperature > TEMP_HIGH_THRESHOLD
+
+                # Push fault flags to Ditto
+                put_feature_value("SpeedDriftFault", speed_fault)
+                put_feature_value("LowBatteryAlert", low_battery)
+                put_feature_value("OverheatAlert", overheat)
+
+                # Compute and push health state
+                health_state = compute_health_state(speed_fault, low_battery, overheat)
+                put_feature_value("VehicleHealthState", health_state)
+
+                print(
+                    f"[Faults] SpeedDrift: {speed_fault} | LowBattery: {low_battery} | Overheat: {overheat}"
+                )
+                print(f"[HealthState] {health_state}")
+                print("---")
 
                 time.sleep(1)
+
         except KeyboardInterrupt:
-            print("shutting down")
+            print("Shutting down...")
         except Exception as e:
-            print(f"Error: {e} retrying in 5 sec")
+            print(f"Error: {e}, retrying in 5s")
             time.sleep(5)
         finally:
             session.close()
