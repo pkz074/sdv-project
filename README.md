@@ -79,6 +79,12 @@ pip install -r vehicle/requirements.txt
 pip install -r cloud/requirements.txt
 ```
 
+### 4. Run Script
+```bash
+chmod +x stop_all.sh
+./stop_all.sh
+```
+
 ### 4. Start Kuksa and Zenoh
 ```bash
 docker compose up -d
@@ -199,6 +205,35 @@ curl http://localhost:8000/vehicle/powertrain/combustionengine/ect
 
 ---
 
+## Start OpenDuT
+
+### Requirments
+
+```bash
+source .venv/bin/activate
+pip install requests pandas matplotlib psutil
+```
+
+### Open New Terminal
+
+```bash
+python openDuT/orchestrator.py
+```
+
+```bash
+python openDuT/plot_results.py
+```
+
+### Results
+
+```
+openDuT/results/
+ ├── results.csv
+ ├── chart.png
+```
+
+---
+
 ## Project Structure
 
 ```
@@ -231,6 +266,10 @@ docker compose down
 # Stop Ditto
 cd ~/ditto/deployment/docker/
 docker compose down
+
+# Or Run Script
+chmod +x stop_all.sh
+./stop_all.sh
 ```
 
 ---
