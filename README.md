@@ -85,7 +85,7 @@ chmod +x stop_all.sh
 ./stop_all.sh
 ```
 
-### 4. Start Kuksa and Zenoh
+### 4.1. Start Kuksa and Zenoh
 ```bash
 docker compose up -d
 ```
@@ -94,7 +94,7 @@ This starts:
 - `kuksa-databroker` on port `55556`
 - `zenoh-router` on ports `7447` (protocol) and `8000` (REST API)
 
-### 5. Start Eclipse Ditto
+### 4.2. Start Eclipse Ditto
 Ditto requires its own Docker Compose stack:
 ```bash
 git clone https://github.com/eclipse-ditto/ditto ~/ditto
@@ -108,7 +108,7 @@ curl -u ditto:ditto http://localhost:8080/api/2/things
 ```
 Expected output: `[]` (empty array means Ditto is up with no things yet).
 
-### 6. Register the digital twin policy and thing
+### 5. Register the digital twin policy and thing
 ```bash
 cd sdv-project/cloud
 source ../.venv/bin/activate
