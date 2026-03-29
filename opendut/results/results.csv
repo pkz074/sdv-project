@@ -1,0 +1,3 @@
+Scenario,Latency(ms),Throughput,CPU(%)
+Baseline,616.293478012085,100.2,10.7
+Stress,675.4889369010925,100.0,9.6

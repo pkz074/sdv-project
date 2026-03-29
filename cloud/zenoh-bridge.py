@@ -38,6 +38,13 @@ SIGNAL_TO_FEATURE = {
     "Vehicle.Powertrain.CombustionEngine.ECT": "CoolantTemperature",
 }
 
+def create_feature(feature, value):
+    url = f"{DITTO_URL}/things/{THING_ID}/features/{feature}"
+    headers = {"Content-Type": "application/json"}
+    data = {"properties": {"value": value}}
+    response = requests.put(url, json=data, headers=headers, auth=AUTH)
+    return response.status_code
+
 
 def put_feature_value(feature, value):
     url = f"{DITTO_URL}/things/{THING_ID}/features/{feature}/properties"
@@ -70,6 +77,7 @@ def main():
         try:
             while True:
                 values = client.get_current_values(SIGNALS)
+                cycle_timestamp = time.time()
                 speed = None
                 soc = None
                 temperature = None
@@ -108,19 +116,23 @@ def main():
                 low_battery = soc is not None and soc < SOC_LOW_THRESHOLD
                 overheat = temperature is not None and temperature > TEMP_HIGH_THRESHOLD
 
-                # Push fault flags to Ditto
-                put_feature_value("SpeedDriftFault", speed_fault)
-                put_feature_value("LowBatteryAlert", low_battery)
-                put_feature_value("OverheatAlert", overheat)
+                # Push timestamp + fault flags to Ditto
+                timestamp_status = create_feature("Timestamp", cycle_timestamp)
+                speed_fault_status = put_feature_value("SpeedDriftFault", speed_fault)
+                low_battery_status = put_feature_value("LowBatteryAlert", low_battery)
+                overheat_status = put_feature_value("OverheatAlert", overheat)
 
                 # Compute and push health state
                 health_state = compute_health_state(speed_fault, low_battery, overheat)
-                put_feature_value("VehicleHealthState", health_state)
+                health_status = put_feature_value("VehicleHealthState", health_state)
 
+                print(f"[Timestamp] {cycle_timestamp} -> Ditto: {timestamp_status}")
                 print(
-                    f"[Faults] SpeedDrift: {speed_fault} | LowBattery: {low_battery} | Overheat: {overheat}"
+                    f"[Faults] SpeedDrift: {speed_fault} ({speed_fault_status}) | "
+                    f"LowBattery: {low_battery} ({low_battery_status}) | "
+                    f"Overheat: {overheat} ({overheat_status})"
                 )
-                print(f"[HealthState] {health_state}")
+                print(f"[HealthState] {health_state} ({health_status})")
                 print("---")
 
                 time.sleep(1)
