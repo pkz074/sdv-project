@@ -81,8 +81,8 @@ pip install -r cloud/requirements.txt
 
 ### 4. Run Script
 ```bash
-chmod +x stop_all.sh
-./stop_all.sh
+chmod +x run_all.sh
+./run_all.sh
 ```
 
 ### 4.1. Start Kuksa and Zenoh
