@@ -9,15 +9,22 @@ A Cloud-to-Vehicle data pipeline built on the Eclipse SDV ecosystem. The system 
 ```
 feeder.py  →  Eclipse Kuksa  →  zenoh-bridge.py  →  Eclipse Zenoh  →  Eclipse Ditto
 (VSS signals)  (databroker)     (reads + publishes)  (router + store)  (digital twin)
+                                                                              ↓
+                                                                      diagnostics.py
+                                                                      (OpenSOVD interface)
+                                                                      openDuT/
+                                                                      (automated testing)
 ```
 
 **Components:**
-- `vehicle/feeder.py` — Simulates vehicle signals with sensor drift and fault injection
+- `vehicle/feeder.py` — Simulates vehicle signals with sensor drift, noise spikes, dropout, and fault injection
 - `Eclipse Kuksa` — VSS databroker, normalizes signals over gRPC
-- `cloud/zenoh-bridge.py` — Reads from Kuksa, publishes to Zenoh, and pushes state to Ditto
+- `cloud/zenoh-bridge.py` — Reads from Kuksa, publishes to Zenoh, pushes state and health rules to Ditto
 - `cloud/zenoh-subscriber.py` — Subscribes to Zenoh topics for pipeline verification
+- `cloud/diagnostics.py` — OpenSOVD-inspired diagnostics interface, queries Ditto for fault state
 - `Eclipse Zenoh` — High-performance pub/sub transport with memory storage
 - `Eclipse Ditto` — Digital twin backend, exposes vehicle state via REST API
+- `openDuT/` — Automated testing and performance measurement framework
 
 **Signals monitored:**
 - `Vehicle.Speed` — vehicle speed (km/h)
@@ -26,8 +33,13 @@ feeder.py  →  Eclipse Kuksa  →  zenoh-bridge.py  →  Eclipse Zenoh  →  Ec
 - `Vehicle.Chassis.Accelerator.PedalPosition` — throttle position (%)
 - `Vehicle.Powertrain.CombustionEngine.ECT` — coolant temperature (°C)
 
-**Functional Modification:**
-A `SpeedDriftFault` flag is computed in the bridge — it activates when speed drifts beyond a threshold. This flag propagates through the full pipeline and is visible in the Ditto digital twin in real time.
+**Digital Twin Features (Ditto):**
+- `VehicleSpeed`, `BatterySOC`, `EngineSpeed`, `ThrottlePosition`, `CoolantTemperature` — raw telemetry
+- `SpeedDriftFault` — true when speed exceeds 61 km/h
+- `LowBatteryAlert` — true when SOC drops below 20%
+- `OverheatAlert` — true when temperature exceeds 100°C
+- `VehicleHealthState` — NORMAL / DEGRADED / UNSAFE
+- `Timestamp` — cycle timestamp used for latency measurement
 
 ---
 
@@ -55,6 +67,14 @@ requests
 eclipse-zenoh
 ```
 
+**`openDuT/`**
+```
+requests
+psutil
+pandas
+matplotlib
+```
+
 ---
 
 ## Installation
@@ -77,15 +97,10 @@ python3 -m venv .venv
 source .venv/bin/activate
 pip install -r vehicle/requirements.txt
 pip install -r cloud/requirements.txt
+pip install requests psutil pandas matplotlib
 ```
 
-### 4. Run Script
-```bash
-chmod +x run_all.sh
-./run_all.sh
-```
-
-### 4.1. Start Kuksa and Zenoh
+### 4. Start Kuksa and Zenoh
 ```bash
 docker compose up -d
 ```
@@ -94,7 +109,7 @@ This starts:
 - `kuksa-databroker` on port `55556`
 - `zenoh-router` on ports `7447` (protocol) and `8000` (REST API)
 
-### 4.2. Start Eclipse Ditto
+### 5. Start Eclipse Ditto
 Ditto requires its own Docker Compose stack:
 ```bash
 git clone https://github.com/eclipse-ditto/ditto ~/ditto
@@ -108,7 +123,7 @@ curl -u ditto:ditto http://localhost:8080/api/2/things
 ```
 Expected output: `[]` (empty array means Ditto is up with no things yet).
 
-### 5. Register the digital twin policy and thing
+### 6. Register the digital twin policy and thing
 ```bash
 cd sdv-project/cloud
 source ../.venv/bin/activate
@@ -127,13 +142,23 @@ Thing response: 201
 Ditto setup complete.
 ```
 
-This creates the `org.vehicle:my-device` digital twin with 6 features: `VehicleSpeed`, `BatterySOC`, `EngineSpeed`, `ThrottlePosition`, `CoolantTemperature`, and `SpeedDriftFault`.
-
 ---
 
 ## Running the System
 
-Open **three separate terminals**, all with the virtual environment activated:
+### Option 1 — Automatic (recommended)
+From the project root:
+```bash
+./run_all.sh
+```
+
+To stop everything:
+```bash
+./stop_all.sh
+```
+
+### Option 2 — Manual
+Open separate terminals, all with the virtual environment activated:
 
 ```bash
 source .venv/bin/activate
@@ -157,6 +182,12 @@ cd cloud
 python zenoh-subscriber.py
 ```
 
+**Terminal 4 — Diagnostics interface (optional):**
+```bash
+cd cloud
+python diagnostics.py
+```
+
 ---
 
 ## Verifying the Pipeline
@@ -168,21 +199,22 @@ Speed: 60.4 km/h | SOC: 94.9% | RPM: 2034 | Throttle: 25.3% | Temp: 71.2°C
 ```
 
 ### 2. Check bridge output (Terminal 2)
-You should see each signal being pushed to Ditto with HTTP 204 responses:
+You should see each signal being pushed to Ditto with HTTP 204 responses and health state computed:
 ```
 [VehicleSpeed] 60.44 -> Ditto: 204
 [BatterySOC] 94.90 -> Ditto: 204
 [EngineSpeed] 2034.00 -> Ditto: 204
 [ThrottlePosition] 25.00 -> Ditto: 204
 [CoolantTemperature] 71.20 -> Ditto: 204
-[SpeedDriftFault] False
+[Faults] SpeedDrift: True | LowBattery: False | Overheat: False
+[HealthState] DEGRADED
 ```
 
-### 3. Check Zenoh subscriber output (Terminal 3)
-You should see all Zenoh topics receiving messages:
+### 3. Check diagnostics output (Terminal 4)
 ```
-[vehicle/speed] signal: Vehicle.Speed | value: 60.44 | timestamp: ...
-[vehicle/powertrain/combustionengine/speed] signal: Vehicle.Powertrain.CombustionEngine.Speed | value: 2034 | timestamp: ...
+--- OpenSOVD Diagnostic Scan Starting ---
+Checking SpeedDriftFault... Status: [ ERROR ]
+ALERT: Vehicle Speed Instability Detected! Service Required.
 ```
 
 ### 4. Check Ditto digital twin via REST
@@ -191,7 +223,7 @@ curl -u ditto:ditto http://localhost:8080/api/2/things/org.vehicle:my-device
 ```
 
 ### 5. Check Ditto Explorer UI
-Open `http://localhost:8080` in your browser, click the Explorer UI link, and select `org.vehicle:my-device`. You will see all 6 features updating in real time.
+Open `http://localhost:8080` in your browser, click the Explorer UI link, and select `org.vehicle:my-device`. You will see all features updating in real time including health state and fault flags.
 
 ### 6. Check Zenoh REST API
 While the bridge is running:
@@ -205,32 +237,31 @@ curl http://localhost:8000/vehicle/powertrain/combustionengine/ect
 
 ---
 
-## Start OpenDuT
+## Running the openDuT Experiments
 
-### Requirments
+The `openDuT/` folder contains an automated testing framework for measuring system performance.
 
+### Install dependencies
 ```bash
-source .venv/bin/activate
-pip install requests pandas matplotlib psutil
+pip install requests psutil pandas matplotlib
 ```
 
-### Open New Terminal
-
+### Run experiments
 ```bash
-python openDuT/orchestrator.py
+cd openDuT
+python orchestrator.py
 ```
 
+This runs both baseline and stress test scenarios and saves results to `openDuT/results/results.csv`.
+
+### Generate performance chart
 ```bash
-python openDuT/plot_results.py
+python plot_results.py
 ```
 
-### Results
+This generates `openDuT/results/chart.png` comparing latency, throughput, and CPU usage across scenarios.
 
-```
-openDuT/results/
- ├── results.csv
- ├── chart.png
-```
+**Note:** Make sure `feeder.py` and `zenoh-bridge.py` are running before executing the experiments.
 
 ---
 
@@ -239,18 +270,30 @@ openDuT/results/
 ```
 sdv-project/
 ├── vehicle/
-│   ├── feeder.py               # VSS signal simulator with fault injection
+│   ├── feeder.py                   # VSS signal simulator with fault injection
 │   └── requirements.txt
 ├── cloud/
-│   ├── zenoh-bridge.py         # Kuksa → Zenoh → Ditto bridge
-│   ├── zenoh-subscriber.py     # Zenoh subscriber for pipeline verification
-│   ├── ditto_setup.py          # Registers Ditto policy and digital twin
+│   ├── zenoh-bridge.py             # Kuksa → Zenoh → Ditto bridge with health rules
+│   ├── zenoh-subscriber.py         # Zenoh subscriber for pipeline verification
+│   ├── ditto_setup.py              # Registers Ditto policy and digital twin
+│   ├── diagnostics.py              # OpenSOVD diagnostics interface
 │   └── requirements.txt
-├── policy.json                 # Ditto access policy definition
-├── VSS_Ditto.json              # Digital twin feature structure
-├── zenoh-config.json5          # Zenoh router config with memory storage
-├── docker-compose.yaml         # Kuksa + Zenoh services
-├── .env.example                # Environment variable template
+├── openDuT/
+│   ├── orchestrator.py             # Runs baseline and stress experiments
+│   ├── test_cases.py               # Defines baseline and stress test scenarios
+│   ├── metrics.py                  # Measures latency and throughput
+│   ├── monitor.py                  # Monitors CPU and memory usage
+│   ├── plot_results.py             # Generates performance chart
+│   └── results/
+│       ├── results.csv             # Experiment results
+│       └── chart.png               # Performance comparison chart
+├── policy.json                     # Ditto access policy definition
+├── VSS_Ditto.json                  # Digital twin feature structure
+├── zenoh-config.json5              # Zenoh router config with memory storage
+├── docker-compose.yaml             # Kuksa + Zenoh services
+├── run_all.sh                      # Starts all system components
+├── stop_all.sh                     # Stops all system components
+├── .env.example                    # Environment variable template
 └── README.md
 ```
 
@@ -258,6 +301,12 @@ sdv-project/
 
 ## Stopping the System
 
+### Option 1 — Automatic
+```bash
+./stop_all.sh
+```
+
+### Option 2 — Manual
 ```bash
 # Stop Kuksa + Zenoh
 cd sdv-project
@@ -266,10 +315,6 @@ docker compose down
 # Stop Ditto
 cd ~/ditto/deployment/docker/
 docker compose down
-
-# Or Run Script
-chmod +x stop_all.sh
-./stop_all.sh
 ```
 
 ---
@@ -280,3 +325,5 @@ chmod +x stop_all.sh
 - The `ditto_setup.py` script only needs to be run once. If you restart Ditto, the thing persists unless you explicitly delete it.
 - If Ditto loses state after a restart, re-run `python ditto_setup.py` from the `cloud/` folder.
 - The `.env` file is excluded from version control. Use `.env.example` as a reference.
+- The openDuT experiments require `feeder.py` and `zenoh-bridge.py` to be running first.
+- Run `plot_results.py` only after `orchestrator.py` has generated `results.csv`.
