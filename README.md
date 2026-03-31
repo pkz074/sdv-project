@@ -12,6 +12,7 @@ feeder.py  →  Eclipse Kuksa  →  zenoh-bridge.py  →  Eclipse Zenoh  →  Ec
                                                                               ↓
                                                                       diagnostics.py
                                                                       (OpenSOVD interface)
+                                                                              ↓
                                                                       openDuT/
                                                                       (automated testing)
 ```
@@ -24,7 +25,7 @@ feeder.py  →  Eclipse Kuksa  →  zenoh-bridge.py  →  Eclipse Zenoh  →  Ec
 - `cloud/diagnostics.py` — OpenSOVD-inspired diagnostics interface, queries Ditto for fault state
 - `Eclipse Zenoh` — High-performance pub/sub transport with memory storage
 - `Eclipse Ditto` — Digital twin backend, exposes vehicle state via REST API
-- `openDuT/` — Automated testing and performance measurement framework
+- `openDuT` — Automated testing and performance measurement framework
 
 **Signals monitored:**
 - `Vehicle.Speed` — vehicle speed (km/h)
@@ -97,10 +98,21 @@ python3 -m venv .venv
 source .venv/bin/activate
 pip install -r vehicle/requirements.txt
 pip install -r cloud/requirements.txt
-pip install requests psutil pandas matplotlib
+pip install -r opendut/requirements.txt
 ```
 
-### 4. Start Kuksa and Zenoh
+### 4. Start Kuksa and Zenoh and Ditto
+
+#### Automatic
+From the project root:
+```bash
+chmod +x run_all.sh
+./run_all.sh
+```
+
+#### Manual
+
+##### 4.1. Start Kuksa and Zenoh
 ```bash
 docker compose up -d
 ```
@@ -109,7 +121,7 @@ This starts:
 - `kuksa-databroker` on port `55556`
 - `zenoh-router` on ports `7447` (protocol) and `8000` (REST API)
 
-### 5. Start Eclipse Ditto
+##### 4.2. Start Eclipse Ditto
 Ditto requires its own Docker Compose stack:
 ```bash
 git clone https://github.com/eclipse-ditto/ditto ~/ditto
@@ -123,7 +135,7 @@ curl -u ditto:ditto http://localhost:8080/api/2/things
 ```
 Expected output: `[]` (empty array means Ditto is up with no things yet).
 
-### 6. Register the digital twin policy and thing
+### 5. Register the digital twin policy and thing
 ```bash
 cd sdv-project/cloud
 source ../.venv/bin/activate
@@ -145,19 +157,6 @@ Ditto setup complete.
 ---
 
 ## Running the System
-
-### Option 1 — Automatic (recommended)
-From the project root:
-```bash
-./run_all.sh
-```
-
-To stop everything:
-```bash
-./stop_all.sh
-```
-
-### Option 2 — Manual
 Open separate terminals, all with the virtual environment activated:
 
 ```bash
@@ -239,12 +238,7 @@ curl http://localhost:8000/vehicle/powertrain/combustionengine/ect
 
 ## Running the openDuT Experiments
 
-The `openDuT/` folder contains an automated testing framework for measuring system performance.
-
-### Install dependencies
-```bash
-pip install requests psutil pandas matplotlib
-```
+The `openDuT` folder contains an automated testing framework for measuring system performance.
 
 ### Run experiments
 ```bash
