@@ -4,6 +4,7 @@ import requests
 DITTO_URL = "http://localhost:8080/api/2/things/org.vehicle:my-device"
 
 def get_latency():
+
     try:
         res = requests.get(DITTO_URL, auth=("ditto", "ditto"))
         data = res.json()
@@ -21,6 +22,7 @@ def get_latency():
         return None
 
 def measure_throughput(duration=5):
+
     start = time.time()
     count = 0
 
@@ -29,6 +31,7 @@ def measure_throughput(duration=5):
             DITTO_URL,
             auth=("ditto", "ditto")
         )
+        
         if res.status_code == 200:
             count += 1
 

@@ -1,3 +1,4 @@
+
 import time
 import csv
 from test_cases import run_baseline, run_stress
@@ -5,6 +6,7 @@ from test_cases import run_baseline, run_stress
 RESULT_FILE = "openDuT/results/results.csv"
 
 def save_results(results):
+
     with open(RESULT_FILE, "w", newline="") as f:
         writer = csv.writer(f)
         writer.writerow(["Scenario", "Latency(ms)", "Throughput", "CPU(%)"])
@@ -13,6 +15,7 @@ def save_results(results):
             writer.writerow(r)
 
 def main():
+
     results = []
 
     print("Running openDuT experiments...\n")
